@@ -618,6 +618,113 @@ out:
 		*error_origin = eorig;
 	return res;
 }
+#define RPC_PARAM_COUNT  (3)
+
+#define OPTEE_MSG_RPC_CMD_
+
+TEEC_Result TEEC_ReceiveGenericRpc(TEEC_Session *session,
+			uint32_t *key, uint32_t *cmd_id)
+{
+	uint64_t buf[(sizeof(struct tee_ioctl_grpc_recv_arg) +
+			RPC_PARAM_COUNT *
+				sizeof(struct tee_ioctl_param)) /
+			sizeof(uint64_t)] = { 0 };
+	struct tee_ioctl_buf_data buf_data;
+	struct tee_ioctl_grpc_recv_arg *arg;
+	TEEC_Result res = TEEC_SUCCESS;
+	int rc;
+
+	if (!session || !key || !cmd_id) {
+		res = TEEC_ERROR_BAD_PARAMETERS;
+		goto out;
+	}
+
+	buf_data.buf_ptr = (uintptr_t)buf;
+	buf_data.buf_len = sizeof(buf);
+
+	arg = (struct tee_ioctl_grpc_recv_arg *)buf;
+	arg->session = session->session_id;
+	arg->num_params = RPC_PARAM_COUNT;
+	
+	rc = ioctl(session->ctx->fd, TEE_IOC_GRPC_RECV, &buf_data);
+	if (rc) {
+		EMSG("TEE_IOC_INVOKE failed");
+		res = ioctl_errno_to_res(errno);
+		goto out;
+	}
+
+	switch (arg->func) {
+OPTEE_MSG_RPC_CMD_SHM_ALLOC		
+	}
+
+	res = arg->ret;
+	*key = arg->key;
+	*cmd_id = arg->func;
+
+out:
+	return res;
+}
+
+/* TEEC_Result __TEEC_ReceiveGenericRpc(TEEC_Session *session, TEEC_Operation *operation,
+			uint32_t *key, uint32_t *cmd_id)
+{
+	uint64_t buf[(sizeof(struct tee_ioctl_grpc_recv_arg) +
+			TEEC_CONFIG_PAYLOAD_REF_COUNT *
+				sizeof(struct tee_ioctl_param)) /
+			sizeof(uint64_t)] = { 0 };
+	struct tee_ioctl_buf_data buf_data;
+	struct tee_ioctl_grpc_recv_arg *arg;
+	struct tee_ioctl_param *params;
+	TEEC_Result res;
+	TEEC_SharedMemory shm[TEEC_CONFIG_PAYLOAD_REF_COUNT];
+	int rc;
+
+	if (!session || !key || !cmd_id) {
+		res = TEEC_ERROR_BAD_PARAMETERS;
+		goto out;
+	}
+
+	bm_timestamp();
+
+	buf_data.buf_ptr = (uintptr_t)buf;
+	buf_data.buf_len = sizeof(buf);
+
+	arg = (struct tee_ioctl_grpc_recv_arg *)buf;
+	arg->num_params = TEEC_CONFIG_PAYLOAD_REF_COUNT;
+	params = (struct tee_ioctl_param *)(arg + 1);
+
+	arg->session = session->session_id;
+	
+	if (operation) {
+		teec_mutex_lock(&teec_mutex);
+		operation->session = session;
+		teec_mutex_unlock(&teec_mutex);
+	}
+
+	res = teec_pre_process_operation(session->ctx, operation, params, shm);
+	if (res != TEEC_SUCCESS) {
+		goto out_free_temp_refs;
+	}
+
+	rc = ioctl(session->ctx->fd, TEE_IOC_GRPC_RECV, &buf_data);
+	if (rc) {
+		EMSG("TEE_IOC_INVOKE failed");
+		res = ioctl_errno_to_res(errno);
+		goto out_free_temp_refs;
+	}
+
+	res = arg->ret;
+	*key = arg->key;
+	*cmd_id = arg->func;
+	teec_post_process_operation(operation, params, shm);
+
+	bm_timestamp();
+
+out_free_temp_refs:
+	teec_free_temp_refs(operation, shm);
+out:
+	return res;
+} */
 
 void TEEC_RequestCancellation(TEEC_Operation *operation)
 {
