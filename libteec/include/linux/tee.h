@@ -465,11 +465,10 @@ struct tee_iocl_supp_send_arg {
  * host application receives when output.
  */
 struct tee_ioctl_grpc_recv_arg {
-	__u32 key;
 	__u32 func;
 	__u32 session;
+	__u32 key;
 	__u32 num_params;
-	__u32 ret;
 	
 	/* num_params tells the actual number of element in params */
 	struct tee_ioctl_param params[];
@@ -490,8 +489,9 @@ struct tee_ioctl_grpc_recv_arg {
  * @num_params	[in] number of parameters following this struct
  */
 struct tee_ioctl_grpc_send_arg {
-	__u32 session;
 	__u32 ret;
+	__u32 session;
+	__u32 key;
 	__u32 num_params;
 
 	/* num_params tells the actual number of element in params */

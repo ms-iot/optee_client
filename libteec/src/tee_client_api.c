@@ -620,17 +620,64 @@ out:
 }
 #define RPC_PARAM_COUNT  (3)
 
-#define OPTEE_MSG_RPC_CMD_
+#define OPTEE_MSG_RPC_CMD_SHM_ALLOC  6
+#define OPTEE_MSG_RPC_CMD_SHM_FREE   7
+#define OPTEE_MSG_RPC_CMD_GENERIC    11
+
+#define MAX(x,y)               ((x) > (y) ? (x) : (y))
+#define GRPC_BASE_IOCTL_SIZE   (MAX(sizeof(struct tee_ioctl_grpc_recv_arg), sizeof(struct tee_ioctl_grpc_send_arg)))
+#define GRPC_PARAM_IOCTL_SIZE  (RPC_PARAM_COUNT * sizeof(struct tee_ioctl_param))
+#define GRPC_IOCTL_SIZE        ((GRPC_BASE_IOCTL_SIZE + GRPC_PARAM_IOCTL_SIZE) / sizeof(uint64_t))
+
+union tee_ioctl_grpc {
+	uint64_t buf[GRPC_IOCTL_SIZE];
+	struct tee_ioctl_grpc_recv_arg recv;
+	struct tee_ioctl_grpc_send_arg send;
+};
+
+static TEEC_Result teec_process_shm_alloc(TEEC_Context *ctx, struct tee_ioctl_grpc_recv_arg *arg)
+{
+	TEEC_Result res;
+	TEEC_SharedMemory shm;
+
+	if (arg->num_params != 1 ||
+	    (arg->params[0].attr & TEE_IOCTL_PARAM_ATTR_TYPE_MASK) != TEE_IOCTL_PARAM_ATTR_TYPE_VALUE_INOUT)
+		return TEEC_ERROR_BAD_PARAMETERS;
+
+	shm.size = arg->params[0].u.value.b;
+	shm.flags = TEEC_MEM_INPUT | TEEC_MEM_OUTPUT;
+
+	res = TEEC_AllocateSharedMemory(ctx, &shm);
+	if (res != TEEC_SUCCESS)
+		return res;
+
+	arg->params[0].u.value.c = shm.id;
+
+	return res;
+}
+
+TEEC_Result TEEC_ReplyGenericRpc(TEEC_Session *session, struct tee_ioctl_grpc_send_arg *arg);
+TEEC_Result TEEC_ReplyGenericRpc(TEEC_Session *session, struct tee_ioctl_grpc_send_arg *arg)
+{
+	struct tee_ioctl_buf_data data;
+
+	data.buf_ptr = (uintptr_t)arg;
+	data.buf_len = sizeof(struct tee_ioctl_grpc_send_arg) +
+		       (sizeof(struct tee_ioctl_param) * arg->num_params);
+
+	if (ioctl(session->ctx->fd, TEE_IOC_GRPC_SEND, &data)) {
+		EMSG("TEEC_IOC_GRPC_SEND: %s", strerror(errno));
+		return ioctl_errno_to_res(errno);
+	}
+
+	return TEEC_SUCCESS;
+}
 
 TEEC_Result TEEC_ReceiveGenericRpc(TEEC_Session *session,
 			uint32_t *key, uint32_t *cmd_id)
 {
-	uint64_t buf[(sizeof(struct tee_ioctl_grpc_recv_arg) +
-			RPC_PARAM_COUNT *
-				sizeof(struct tee_ioctl_param)) /
-			sizeof(uint64_t)] = { 0 };
+	union tee_ioctl_grpc grpc;
 	struct tee_ioctl_buf_data buf_data;
-	struct tee_ioctl_grpc_recv_arg *arg;
 	TEEC_Result res = TEEC_SUCCESS;
 	int rc;
 
@@ -639,13 +686,15 @@ TEEC_Result TEEC_ReceiveGenericRpc(TEEC_Session *session,
 		goto out;
 	}
 
-	buf_data.buf_ptr = (uintptr_t)buf;
-	buf_data.buf_len = sizeof(buf);
+restart:
+	memset(&grpc, 0, sizeof(grpc));
 
-	arg = (struct tee_ioctl_grpc_recv_arg *)buf;
-	arg->session = session->session_id;
-	arg->num_params = RPC_PARAM_COUNT;
-	
+	buf_data.buf_ptr = (uintptr_t)&grpc.buf;
+	buf_data.buf_len = sizeof(grpc.buf);
+
+	grpc.recv.session = session->session_id;
+	grpc.recv.num_params = RPC_PARAM_COUNT;
+
 	rc = ioctl(session->ctx->fd, TEE_IOC_GRPC_RECV, &buf_data);
 	if (rc) {
 		EMSG("TEE_IOC_INVOKE failed");
@@ -653,14 +702,27 @@ TEEC_Result TEEC_ReceiveGenericRpc(TEEC_Session *session,
 		goto out;
 	}
 
-	switch (arg->func) {
-OPTEE_MSG_RPC_CMD_SHM_ALLOC		
+	switch (grpc.recv.func) {
+	case OPTEE_MSG_RPC_CMD_SHM_ALLOC:
+		res = teec_process_shm_alloc(session->ctx, &grpc.recv);
+		grpc.send.ret = res;
+		res = TEEC_ReplyGenericRpc(session, &grpc.send);
+		if (res != TEEC_SUCCESS)
+			return res;
+
+		goto restart;
+	case OPTEE_MSG_RPC_CMD_SHM_FREE:
+		break;
+	case OPTEE_MSG_RPC_CMD_GENERIC:
+		*key = grpc.recv.key;
+		*cmd_id = grpc.recv.func;
+
+		break;
+	default:
+		break;
 	}
 
-	res = arg->ret;
-	*key = arg->key;
-	*cmd_id = arg->func;
-
+	
 out:
 	return res;
 }
