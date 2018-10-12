@@ -33,6 +33,8 @@
 extern "C" {
 #endif
 
+typedef TEEC_Result (*TEEC_GenericRpcCallback)(int, void *, size_t, void *, size_t);
+
 /**
  * TEEC_RegisterMemoryFileDescriptor() - Register a block of existing memory as
  * a shared block within the scope of the specified context.
@@ -49,6 +51,23 @@ extern "C" {
 TEEC_Result TEEC_RegisterSharedMemoryFileDescriptor(TEEC_Context *context,
 						    TEEC_SharedMemory *sharedMem,
 						    int fd);
+
+/**
+ * TEEC_ReceiveReplyGenericRpcWorker() - Executes a loop that receives, parses
+ * and replies to Generic RPC requests. To each Generic RPC request, it invokes
+ * the function supplied.
+ *
+ * @param session    A handle to an open connection to the trusted application.
+ * @param callback   Pointer to a function that handles an individual Generic
+ *                   RPC.
+ *
+ * @return TEEC_SUCCESS              The registration was successful.
+ * @return TEEC_ERROR_BAD_PARAMETERS At least one of the parameters is NULL.
+ * @return TEEC_ERROR_OUT_OF_MEMORY  Memory exhaustion.
+ * @return TEEC_Result               Something failed.
+ */
+TEEC_Result TEEC_ReceiveReplyGenericRpcWorker(TEEC_Session *session,
+							TEEC_GenericRpcCallback callback);
 
 #ifdef __cplusplus
 }

@@ -497,10 +497,6 @@ TEEC_Result TEEC_InvokeCommand(TEEC_Session *session,
 			       TEEC_Operation *operation,
 			       uint32_t *returnOrigin);
 
-TEEC_Result TEEC_ReceiveGenericRpc(TEEC_Session *session,
-				   uint32_t *key,
-				   uint32_t *cmd_id);
-
 /**
  * TEEC_RegisterSharedMemory() - Register a block of existing memory as a
  * shared block within the scope of the specified context.
