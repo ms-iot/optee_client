@@ -532,7 +532,8 @@ static TEEC_Result teec_grpc_process_shm_free(struct tee_ioctl_grpc_recv_arg *ar
 
 static TEEC_Result teec_grpc_process_generic_cmd(struct tee_ioctl_grpc_recv_arg *arg,
 			TEEC_SharedMemory *shm,
-			TEEC_GenericRpcCallback callback)
+			TEEC_GenericRpcCallback callback,
+			void *context)
 {
 	int rpc_type;
 	void *input;
@@ -556,7 +557,7 @@ static TEEC_Result teec_grpc_process_generic_cmd(struct tee_ioctl_grpc_recv_arg 
 	output = (void *)((uintptr_t)shm->buffer + (uintptr_t)arg->params[2].u.memref.shm_offs);
 	output_size = arg->params[1].u.memref.size;
 
-	return callback(rpc_type, input, input_size, output, output_size);
+	return callback(rpc_type, input, input_size, output, output_size, context);
 }
 
 static TEEC_Result teec_grpc_reply(TEEC_Session *session,
@@ -742,7 +743,8 @@ void TEEC_RequestCancellation(TEEC_Operation *operation)
 }
 
 TEEC_Result TEEC_ReceiveReplyGenericRpcWorker(TEEC_Session *session,
-			TEEC_GenericRpcCallback callback)
+			TEEC_GenericRpcCallback callback,
+			void *context)
 {
 	union tee_ioctl_grpc grpc;
 	struct tee_ioctl_buf_data buf_data;
@@ -822,7 +824,7 @@ TEEC_Result TEEC_ReceiveReplyGenericRpcWorker(TEEC_Session *session,
 
 			break;
 		case OPTEE_MSG_RPC_CMD_GENERIC:
-			res = teec_grpc_process_generic_cmd(&grpc.recv, &shm, callback);
+			res = teec_grpc_process_generic_cmd(&grpc.recv, &shm, callback, context);
 			grpc.send.ret = res;
 
 			res = teec_grpc_reply(session, &grpc.send);
