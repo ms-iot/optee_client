@@ -68,9 +68,9 @@ TEEC_Result TEEC_RegisterSharedMemoryFileDescriptor(TEEC_Context *context,
  * @return TEEC_ERROR_OUT_OF_MEMORY  Memory exhaustion.
  * @return TEEC_Result               Something failed.
  */
-TEEC_Result TEEC_ReceiveReplyGenericRpcWorker(TEEC_Session *session,
-					      TEEC_GenericRpcCallback callback,
-					      void *context);
+TEEC_Result TEEC_ReceiveReplyGenericRpc(TEEC_Session *session,
+					TEEC_GenericRpcCallback callback,
+					void *context);
 
 #ifdef __cplusplus
 }
