@@ -458,6 +458,7 @@ struct tee_iocl_supp_send_arg {
 /**
  * struct tee_ioctl_grpc_recv_arg - Receive a request for a generic RPC function
  * @func:	[in] generic RPC function
+ * @session:	[in] session ID 
  * @num_params	[in/out] number of parameters following this struct
  *
  * @num_params is the number of params that host application has room to
@@ -467,7 +468,6 @@ struct tee_iocl_supp_send_arg {
 struct tee_ioctl_grpc_recv_arg {
 	__u32 func;
 	__u32 session;
-	__u32 key;
 	__u32 num_params;
 	
 	/* num_params tells the actual number of element in params */
@@ -486,12 +486,12 @@ struct tee_ioctl_grpc_recv_arg {
 /**
  * struct tee_ioctl_grpc_send_arg - Send a response to a received request
  * @ret:	[out] return value
+ * @session:	[in] session ID 
  * @num_params	[in] number of parameters following this struct
  */
 struct tee_ioctl_grpc_send_arg {
 	__u32 ret;
 	__u32 session;
-	__u32 key;
 	__u32 num_params;
 
 	/* num_params tells the actual number of element in params */

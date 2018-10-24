@@ -58,11 +58,10 @@
 #define OPTEE_MSG_RPC_CMD_GENERIC 		11
 
 #define MAX(x, y)				((x) > (y) ? (x) : (y))
-#define GRPC_BASE_IOCTL_SIZE	(MAX(sizeof(struct tee_ioctl_grpc_recv_arg), sizeof(struct tee_ioctl_grpc_send_arg)))
-#define GRPC_PARAM_IOCTL_SIZE	(RPC_PARAM_COUNT * sizeof(struct tee_ioctl_param))
-#define GRPC_IOCTL_SIZE			((GRPC_BASE_IOCTL_SIZE + GRPC_PARAM_IOCTL_SIZE) / sizeof(uint64_t))
-
-#define GET_IOCTL_PARAM_TYPE(x)	(x & TEE_IOCTL_PARAM_ATTR_TYPE_MASK)
+#define GRPC_BASE_IOCTL_SIZE			(MAX(sizeof(struct tee_ioctl_grpc_recv_arg), sizeof(struct tee_ioctl_grpc_send_arg)))
+#define GRPC_PARAM_IOCTL_SIZE			(RPC_PARAM_COUNT * sizeof(struct tee_ioctl_param))
+#define GRPC_IOCTL_SIZE				((GRPC_BASE_IOCTL_SIZE + GRPC_PARAM_IOCTL_SIZE) / sizeof(uint64_t))
+#define GET_IOCTL_PARAM_TYPE(x)			(x & TEE_IOCTL_PARAM_ATTR_TYPE_MASK)
 
 union tee_ioctl_grpc {
 	uint64_t buf[GRPC_IOCTL_SIZE];
@@ -742,7 +741,7 @@ void TEEC_RequestCancellation(TEEC_Operation *operation)
 		EMSG("TEE_IOC_CANCEL: %s", strerror(errno));
 }
 
-TEEC_Result TEEC_ReceiveReplyGenericRpcWorker(TEEC_Session *session,
+TEEC_Result TEEC_ReceiveReplyGenericRpc(TEEC_Session *session,
 			TEEC_GenericRpcCallback callback,
 			void *context)
 {
@@ -769,7 +768,7 @@ TEEC_Result TEEC_ReceiveReplyGenericRpcWorker(TEEC_Session *session,
 
 		rc = ioctl(session->ctx->fd, TEE_IOC_GRPC_RECV, &buf_data);
 		if (rc) {
-			EMSG("TEE_IOC_GRPC_RECV failed");
+			EMSG("TEE_IOC_GRPC_RECV: %s", strerror(errno));
 			res = ioctl_errno_to_res(errno);
 			break;
 		}
@@ -784,43 +783,33 @@ TEEC_Result TEEC_ReceiveReplyGenericRpcWorker(TEEC_Session *session,
 			}
 
 			res = teec_grpc_process_shm_alloc(session->ctx, &grpc.recv, &shm);
-			if (res != TEEC_SUCCESS) {
-				EMSG("Failed to allocate shared memory.");
+			if (res != TEEC_SUCCESS)
 				goto out;
-			}
 
 			has_shm = true;
 			grpc.send.ret = res;
 		
 			res = teec_grpc_reply(session, &grpc.send);
-			if (res != TEEC_SUCCESS) {
-				EMSG("Failed to reply to shared memory allocation RPC.");
+			if (res != TEEC_SUCCESS)
 				goto out;
-			}
 
 			break;
 		case OPTEE_MSG_RPC_CMD_SHM_FREE:
 			if (!has_shm) {
-				EMSG("Shared memory free requested without prior allocation.");
 				res = TEEC_ERROR_GENERIC;
-
 				goto out;
 			}
 
 			res = teec_grpc_process_shm_free(&grpc.recv, &shm);
-			if (res != TEEC_SUCCESS) {
-				EMSG("Failed to free shared memory.");
+			if (res != TEEC_SUCCESS)
 				goto out;
-			}
 
 			has_shm = false;
 			grpc.send.ret = res;
 
 			res = teec_grpc_reply(session, &grpc.send);
-			if (res != TEEC_SUCCESS) {
-				EMSG("Failed to reply to shared memory free RPC.");
+			if (res != TEEC_SUCCESS)
 				goto out;
-			}
 
 			break;
 		case OPTEE_MSG_RPC_CMD_GENERIC:
@@ -828,10 +817,8 @@ TEEC_Result TEEC_ReceiveReplyGenericRpcWorker(TEEC_Session *session,
 			grpc.send.ret = res;
 
 			res = teec_grpc_reply(session, &grpc.send);
-			if (res != TEEC_SUCCESS) {
-				EMSG("Failed to reply to shared memory free RPC.");
+			if (res != TEEC_SUCCESS)
 				goto out;
-			}
 
 			break;
 		default:
