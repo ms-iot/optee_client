@@ -4,7 +4,12 @@
 LOCAL_PATH := $(call my-dir)
 
 # set CFG_TEE_CLIENT_LOAD_PATH before include config.mk
-CFG_TEE_CLIENT_LOAD_PATH ?= /system/lib
+CFG_TEE_CLIENT_LOAD_PATH ?= /vendor/lib
+
+# set CFG_TEE_DATA_PATH before include config.mk
+CFG_TEE_DATA_PATH ?= /data/vendor/tee
+TEEC_TEST_LOAD_PATH ?= /data/vendor/tee
+CFG_TEE_FS_PARENT_PATH ?= /data/vendor
 
 ################################################################################
 # Include optee-client common config and flags                                 #
@@ -21,7 +26,7 @@ include $(CLEAR_VARS)
 LOCAL_CFLAGS += $(optee_CFLAGS)
 
 ifneq ($(CFG_TEE_CLIENT_LOG_FILE),)
-LOCAL_CFLAGS += -DTEEC_LOG_FILE=$(CFG_TEE_CLIENT_LOG_FILE)
+LOCAL_CFLAGS += -DTEEC_LOG_FILE=\"$(CFG_TEE_CLIENT_LOG_FILE)\"
 endif
 
 LOCAL_CFLAGS += -DDEBUGLEVEL_$(CFG_TEE_CLIENT_LOG_LEVEL)
@@ -39,7 +44,9 @@ LOCAL_C_INCLUDES := $(LOCAL_PATH)/public \
 
 LOCAL_PRELINK_MODULE := false
 LOCAL_MODULE := libteec
+
 LOCAL_MODULE_TAGS := optional
+LOCAL_VENDOR_MODULE := true
 
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/public
 
