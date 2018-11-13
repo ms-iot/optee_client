@@ -554,7 +554,7 @@ static TEEC_Result teec_grpc_process_generic_cmd(struct tee_ioctl_grpc_recv_arg 
 	input_size = arg->params[1].u.memref.size;
 
 	output = (void *)((uintptr_t)shm->buffer + (uintptr_t)arg->params[2].u.memref.shm_offs);
-	output_size = arg->params[1].u.memref.size;
+	output_size = arg->params[2].u.memref.size;
 
 	return callback(rpc_type, input, input_size, output, output_size, context);
 }
