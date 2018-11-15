@@ -768,7 +768,6 @@ TEEC_Result TEEC_ReceiveReplyGenericRpc(TEEC_Session *session,
 
 		rc = ioctl(session->ctx->fd, TEE_IOC_GRPC_RECV, &buf_data);
 		if (rc) {
-			EMSG("TEE_IOC_GRPC_RECV: %s", strerror(errno));
 			res = ioctl_errno_to_res(errno);
 			break;
 		}
@@ -776,9 +775,7 @@ TEEC_Result TEEC_ReceiveReplyGenericRpc(TEEC_Session *session,
 		switch (grpc.recv.func) {
 		case OPTEE_MSG_RPC_CMD_SHM_ALLOC:
 			if (has_shm) {
-				EMSG("Shared memory allocation requested twice within single RPC.");
 				res = TEEC_ERROR_GENERIC;
-
 				goto out;
 			}
 
