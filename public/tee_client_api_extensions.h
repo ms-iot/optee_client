@@ -33,7 +33,7 @@
 extern "C" {
 #endif
 
-typedef TEEC_Result (*TEEC_GenericRpcCallback)(int, void *, size_t, void *, size_t, void *);
+typedef TEEC_Result (*TEEC_GenericRpcCallback)(int, void *, size_t, void *, size_t, void *, size_t, void *);
 
 /**
  * TEEC_RegisterMemoryFileDescriptor() - Register a block of existing memory as
@@ -54,7 +54,7 @@ TEEC_Result TEEC_RegisterSharedMemoryFileDescriptor(TEEC_Context *context,
 
 /**
  * TEEC_ReceiveReplyGenericRpc() - Executes a loop that receives, parses and
- * replies to Generic RPC requests. To each Generic RPC request, it invokes
+ * replies to Generic RPC requests. For each Generic RPC request, it invokes
  * the function supplied.
  *
  * @param session    A handle to an open connection to the trusted application.

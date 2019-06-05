@@ -51,7 +51,7 @@
 /* How many device sequence numbers will be tried before giving up */
 #define TEEC_MAX_DEV_SEQ	10
 
-#define RPC_PARAM_COUNT		3
+#define RPC_PARAM_COUNT		4
 
 #define OPTEE_MSG_RPC_CMD_SHM_ALLOC		6
 #define OPTEE_MSG_RPC_CMD_SHM_FREE		7
@@ -535,28 +535,74 @@ static TEEC_Result teec_grpc_process_generic_cmd(struct tee_ioctl_grpc_recv_arg 
 			void *context)
 {
 	int rpc_type;
-	void *input;
-	size_t input_size;
-	void *output;
-	size_t output_size;
 
-	if (arg->num_params != 3 ||
-		GET_IOCTL_PARAM_TYPE(arg->params[0].attr) != TEE_IOCTL_PARAM_ATTR_TYPE_VALUE_INPUT ||
-		GET_IOCTL_PARAM_TYPE(arg->params[1].attr) != TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_INPUT ||
-		GET_IOCTL_PARAM_TYPE(arg->params[2].attr) != TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_OUTPUT ||
-		arg->params[1].u.memref.shm_id != shm->id ||
+	void *inout = NULL;
+	size_t inout_size = 0;
+
+	void *input = NULL;
+	size_t input_size = 0;
+
+	void *output = NULL;
+	size_t output_size = 0;
+
+	__u64 pt_os;
+	__u64 pt_inout;
+	__u64 pt_in;
+	__u64 pt_out;
+
+	pt_os = GET_IOCTL_PARAM_TYPE(arg->params[0].attr);
+	pt_inout = GET_IOCTL_PARAM_TYPE(arg->params[1].attr);
+	pt_in = GET_IOCTL_PARAM_TYPE(arg->params[2].attr);
+	pt_out = GET_IOCTL_PARAM_TYPE(arg->params[3].attr);
+
+	if (pt_os != TEE_IOCTL_PARAM_ATTR_TYPE_VALUE_INPUT)
+		return TEEC_ERROR_BAD_PARAMETERS;
+	
+	if (pt_inout != TEE_IOCTL_PARAM_ATTR_TYPE_NONE &&
+		pt_inout != TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_INOUT)
+		return TEEC_ERROR_BAD_PARAMETERS;
+
+	if (pt_in != TEE_IOCTL_PARAM_ATTR_TYPE_NONE &&
+		pt_in != TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_INPUT)
+		return TEEC_ERROR_BAD_PARAMETERS;
+
+	if (pt_out != TEE_IOCTL_PARAM_ATTR_TYPE_NONE &&
+		pt_out != TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_OUTPUT)
+		return TEEC_ERROR_BAD_PARAMETERS;
+
+	if (pt_inout == TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_INOUT &&
+		arg->params[1].u.memref.shm_id != shm->id)
+		return TEEC_ERROR_BAD_PARAMETERS;
+
+	if (pt_in == TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_INPUT &&
 		arg->params[2].u.memref.shm_id != shm->id)
+		return TEEC_ERROR_BAD_PARAMETERS;
+
+	if (pt_out == TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_OUTPUT &&
+		arg->params[3].u.memref.shm_id != shm->id)
 		return TEEC_ERROR_BAD_PARAMETERS;
 
 	rpc_type = arg->params[0].u.value.a;
 
-	input = (void *)((uintptr_t)shm->buffer + (uintptr_t)arg->params[1].u.memref.shm_offs);
-	input_size = arg->params[1].u.memref.size;
+	if (pt_inout)
+	{
+		inout = (void *)((uintptr_t)shm->buffer + (uintptr_t)arg->params[1].u.memref.shm_offs);
+		inout_size = arg->params[1].u.memref.size;
+	}
 
-	output = (void *)((uintptr_t)shm->buffer + (uintptr_t)arg->params[2].u.memref.shm_offs);
-	output_size = arg->params[2].u.memref.size;
+	if (pt_in == TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_INPUT)
+	{
+		input = (void *)((uintptr_t)shm->buffer + (uintptr_t)arg->params[2].u.memref.shm_offs);
+		input_size = arg->params[2].u.memref.size;
+	}
 
-	return callback(rpc_type, input, input_size, output, output_size, context);
+	if (pt_out == TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_OUTPUT)
+	{
+		output = (void *)((uintptr_t)shm->buffer + (uintptr_t)arg->params[3].u.memref.shm_offs);
+		output_size = arg->params[3].u.memref.size;
+	}
+
+	return callback(rpc_type, inout, inout_size, input, input_size, output, output_size, context);
 }
 
 static TEEC_Result teec_grpc_reply(TEEC_Session *session,
