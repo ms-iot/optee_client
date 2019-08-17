@@ -51,6 +51,24 @@
 /* How many device sequence numbers will be tried before giving up */
 #define TEEC_MAX_DEV_SEQ	10
 
+#define RPC_PARAM_COUNT		4
+
+#define OPTEE_MSG_RPC_CMD_SHM_ALLOC		6
+#define OPTEE_MSG_RPC_CMD_SHM_FREE		7
+#define OPTEE_MSG_RPC_CMD_GENERIC 		11
+
+#define MAX(x, y)				((x) > (y) ? (x) : (y))
+#define GRPC_BASE_IOCTL_SIZE			(MAX(sizeof(struct tee_ioctl_grpc_recv_arg), sizeof(struct tee_ioctl_grpc_send_arg)))
+#define GRPC_PARAM_IOCTL_SIZE			(RPC_PARAM_COUNT * sizeof(struct tee_ioctl_param))
+#define GRPC_IOCTL_SIZE				((GRPC_BASE_IOCTL_SIZE + GRPC_PARAM_IOCTL_SIZE) / sizeof(uint64_t))
+#define GET_IOCTL_PARAM_TYPE(x)			(x & TEE_IOCTL_PARAM_ATTR_TYPE_MASK)
+
+union tee_ioctl_grpc {
+	uint64_t buf[GRPC_IOCTL_SIZE];
+	struct tee_ioctl_grpc_recv_arg recv;
+	struct tee_ioctl_grpc_send_arg send;
+};
+
 static pthread_mutex_t teec_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static void teec_mutex_lock(pthread_mutex_t *mu)
@@ -480,6 +498,134 @@ static void uuid_to_octets(uint8_t d[TEE_IOCTL_UUID_LEN], const TEEC_UUID *s)
 	memcpy(d + 8, s->clockSeqAndNode, sizeof(s->clockSeqAndNode));
 }
 
+static TEEC_Result teec_grpc_process_shm_alloc(TEEC_Context *ctx,
+			struct tee_ioctl_grpc_recv_arg *arg,
+            TEEC_SharedMemory *shm)
+{
+	TEEC_Result res;
+
+	if (arg->num_params != 1 ||
+		GET_IOCTL_PARAM_TYPE(arg->params[0].attr) != TEE_IOCTL_PARAM_ATTR_TYPE_VALUE_INOUT)
+		return TEEC_ERROR_BAD_PARAMETERS;
+
+	shm->size = arg->params[0].u.value.b;
+	shm->flags = TEEC_MEM_INPUT | TEEC_MEM_OUTPUT;
+
+	res = TEEC_AllocateSharedMemory(ctx, shm);
+	if (res != TEEC_SUCCESS)
+		return res;
+
+	arg->params[0].u.value.c = shm->id;
+
+	return res;
+}
+
+static TEEC_Result teec_grpc_process_shm_free(struct tee_ioctl_grpc_recv_arg *arg,
+			TEEC_SharedMemory *shm)
+{
+	if (arg->num_params != 1 ||
+	    GET_IOCTL_PARAM_TYPE(arg->params[0].attr) != TEE_IOCTL_PARAM_ATTR_TYPE_VALUE_INOUT ||
+	    (__s64)arg->params[0].u.value.b != shm->id)
+		return TEEC_ERROR_BAD_PARAMETERS;
+
+	TEEC_ReleaseSharedMemory(shm);
+
+	return TEEC_SUCCESS;
+}
+
+static TEEC_Result teec_grpc_process_generic_cmd(struct tee_ioctl_grpc_recv_arg *arg,
+			TEEC_SharedMemory *shm,
+			TEEC_GenericRpcCallback callback,
+			void *context)
+{
+	int rpc_type;
+
+	void *inout = NULL;
+	size_t inout_size = 0;
+
+	void *input = NULL;
+	size_t input_size = 0;
+
+	void *output = NULL;
+	size_t output_size = 0;
+
+	__u64 pt_os;
+	__u64 pt_inout;
+	__u64 pt_in;
+	__u64 pt_out;
+
+	pt_os = GET_IOCTL_PARAM_TYPE(arg->params[0].attr);
+	pt_inout = GET_IOCTL_PARAM_TYPE(arg->params[1].attr);
+	pt_in = GET_IOCTL_PARAM_TYPE(arg->params[2].attr);
+	pt_out = GET_IOCTL_PARAM_TYPE(arg->params[3].attr);
+
+	if (pt_os != TEE_IOCTL_PARAM_ATTR_TYPE_VALUE_INPUT)
+		return TEEC_ERROR_BAD_PARAMETERS;
+	
+	if (pt_inout != TEE_IOCTL_PARAM_ATTR_TYPE_NONE &&
+		pt_inout != TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_INOUT)
+		return TEEC_ERROR_BAD_PARAMETERS;
+
+	if (pt_in != TEE_IOCTL_PARAM_ATTR_TYPE_NONE &&
+		pt_in != TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_INPUT)
+		return TEEC_ERROR_BAD_PARAMETERS;
+
+	if (pt_out != TEE_IOCTL_PARAM_ATTR_TYPE_NONE &&
+		pt_out != TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_OUTPUT)
+		return TEEC_ERROR_BAD_PARAMETERS;
+
+	if (pt_inout == TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_INOUT &&
+		arg->params[1].u.memref.shm_id != shm->id)
+		return TEEC_ERROR_BAD_PARAMETERS;
+
+	if (pt_in == TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_INPUT &&
+		arg->params[2].u.memref.shm_id != shm->id)
+		return TEEC_ERROR_BAD_PARAMETERS;
+
+	if (pt_out == TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_OUTPUT &&
+		arg->params[3].u.memref.shm_id != shm->id)
+		return TEEC_ERROR_BAD_PARAMETERS;
+
+	rpc_type = arg->params[0].u.value.a;
+
+	if (pt_inout)
+	{
+		inout = (void *)((uintptr_t)shm->buffer + (uintptr_t)arg->params[1].u.memref.shm_offs);
+		inout_size = arg->params[1].u.memref.size;
+	}
+
+	if (pt_in == TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_INPUT)
+	{
+		input = (void *)((uintptr_t)shm->buffer + (uintptr_t)arg->params[2].u.memref.shm_offs);
+		input_size = arg->params[2].u.memref.size;
+	}
+
+	if (pt_out == TEE_IOCTL_PARAM_ATTR_TYPE_MEMREF_OUTPUT)
+	{
+		output = (void *)((uintptr_t)shm->buffer + (uintptr_t)arg->params[3].u.memref.shm_offs);
+		output_size = arg->params[3].u.memref.size;
+	}
+
+	return callback(rpc_type, inout, inout_size, input, input_size, output, output_size, context);
+}
+
+static TEEC_Result teec_grpc_reply(TEEC_Session *session,
+			struct tee_ioctl_grpc_send_arg *arg)
+{
+	struct tee_ioctl_buf_data data;
+
+	data.buf_ptr = (uintptr_t)arg;
+	data.buf_len = sizeof(struct tee_ioctl_grpc_send_arg) +
+		       (sizeof(struct tee_ioctl_param) * arg->num_params);
+
+	if (ioctl(session->ctx->fd, TEE_IOC_GRPC_SEND, &data)) {
+		EMSG("TEEC_IOC_GRPC_SEND: %s", strerror(errno));
+		return ioctl_errno_to_res(errno);
+	}
+
+	return TEEC_SUCCESS;
+}
+
 TEEC_Result TEEC_OpenSession(TEEC_Context *ctx, TEEC_Session *session,
 			const TEEC_UUID *destination,
 			uint32_t connection_method, const void *connection_data,
@@ -661,6 +807,95 @@ void TEEC_RequestCancellation(TEEC_Operation *operation)
 
 	if (ioctl(session->ctx->fd, TEE_IOC_CANCEL, &arg))
 		EMSG("TEE_IOC_CANCEL: %s", strerror(errno));
+}
+
+TEEC_Result TEEC_ReceiveReplyGenericRpc(TEEC_Session *session,
+			TEEC_GenericRpcCallback callback,
+			void *context)
+{
+	union tee_ioctl_grpc grpc;
+	struct tee_ioctl_buf_data buf_data;
+	TEEC_SharedMemory shm = { 0 };
+	TEEC_Result res = TEEC_SUCCESS;
+	bool has_shm = false;
+	int rc;
+
+	if (!session || !callback) {
+		res = TEEC_ERROR_BAD_PARAMETERS;
+		goto out;
+	}
+
+	while (true) {
+		memset(&grpc, 0, sizeof(grpc));
+		buf_data.buf_ptr = (uintptr_t)&grpc.buf;
+
+		buf_data.buf_len = sizeof(grpc.buf);
+
+		grpc.recv.session = session->session_id;
+		grpc.recv.num_params = RPC_PARAM_COUNT;
+
+		rc = ioctl(session->ctx->fd, TEE_IOC_GRPC_RECV, &buf_data);
+		if (rc) {
+			res = ioctl_errno_to_res(errno);
+			break;
+		}
+
+		switch (grpc.recv.func) {
+		case OPTEE_MSG_RPC_CMD_SHM_ALLOC:
+			if (has_shm) {
+				res = TEEC_ERROR_GENERIC;
+				goto out;
+			}
+
+			res = teec_grpc_process_shm_alloc(session->ctx, &grpc.recv, &shm);
+			if (res != TEEC_SUCCESS)
+				goto out;
+
+			has_shm = true;
+			grpc.send.ret = res;
+		
+			res = teec_grpc_reply(session, &grpc.send);
+			if (res != TEEC_SUCCESS)
+				goto out;
+
+			break;
+		case OPTEE_MSG_RPC_CMD_SHM_FREE:
+			if (!has_shm) {
+				res = TEEC_ERROR_GENERIC;
+				goto out;
+			}
+
+			res = teec_grpc_process_shm_free(&grpc.recv, &shm);
+			if (res != TEEC_SUCCESS)
+				goto out;
+
+			has_shm = false;
+			grpc.send.ret = res;
+
+			res = teec_grpc_reply(session, &grpc.send);
+			if (res != TEEC_SUCCESS)
+				goto out;
+
+			break;
+		case OPTEE_MSG_RPC_CMD_GENERIC:
+			res = teec_grpc_process_generic_cmd(&grpc.recv, &shm, callback, context);
+			grpc.send.ret = res;
+
+			res = teec_grpc_reply(session, &grpc.send);
+			if (res != TEEC_SUCCESS)
+				goto out;
+
+			break;
+		default:
+			EMSG("Unsupported RPC requested.");
+			res = TEEC_ERROR_BAD_PARAMETERS;
+
+			break;
+		}
+	}
+
+out:
+	return res;
 }
 
 TEEC_Result TEEC_RegisterSharedMemory(TEEC_Context *ctx, TEEC_SharedMemory *shm)
