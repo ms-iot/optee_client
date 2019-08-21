@@ -55,7 +55,7 @@
 
 #define OPTEE_MSG_RPC_CMD_SHM_ALLOC		6
 #define OPTEE_MSG_RPC_CMD_SHM_FREE		7
-#define OPTEE_MSG_RPC_CMD_GENERIC 		11
+#define OPTEE_MSG_RPC_CMD_GENERIC 		50
 
 #define MAX(x, y)				((x) > (y) ? (x) : (y))
 #define GRPC_BASE_IOCTL_SIZE			(MAX(sizeof(struct tee_ioctl_grpc_recv_arg), sizeof(struct tee_ioctl_grpc_send_arg)))
