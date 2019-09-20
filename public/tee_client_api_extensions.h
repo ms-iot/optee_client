@@ -33,6 +33,16 @@
 extern "C" {
 #endif
 
+TEEC_Result TEEC_OpenSessionEx(TEEC_Context *ctx,
+			       TEEC_Session *session,
+			       const TEEC_UUID *destination,
+			       uint32_t connection_method,
+			       const void *connection_data,
+			       TEEC_Operation *operation,
+			       uint32_t *ret_origin,
+			       TEEC_GenericRpcCallback rpc_callback,
+			       void *rpc_context);
+
 /**
  * TEEC_RegisterMemoryFileDescriptor() - Register a block of existing memory as
  * a shared block within the scope of the specified context.

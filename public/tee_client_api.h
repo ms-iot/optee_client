@@ -37,6 +37,7 @@ extern "C" {
 #include <stddef.h>
 #include <stdbool.h>
 #include <limits.h>
+#include <pthread.h>
 
 /*
  * Defines the number of available memory references in an open session or
@@ -374,6 +375,21 @@ typedef union {
 } TEEC_Parameter;
 
 /**
+ * TEEC_Result (*TEEC_GenericRpcCallback) - Callback type for generic RPC
+ * handling to allow TA's to request services from its host.
+ *
+ * Either the TA uses values or tmpref's, but not memeref's.
+ *
+ * @param func_id  The Function ID that the TA requests the host to execute.
+ * @param params   Parameters, either values or tmpref's as passed by the TA.
+ * @param context  Caller-supplied pointer, or NULL.
+ */
+typedef TEEC_Result (*TEEC_GenericRpcCallback)(
+	int func_id,
+	TEEC_Parameter *parameters,
+	void *context);
+
+/**
  * struct TEEC_Session - Represents a connection between a client application
  * and a trusted application.
  */
@@ -381,6 +397,11 @@ typedef struct {
 	/* Implementation defined */
 	TEEC_Context *ctx;
 	uint32_t session_id;
+
+	/* Generic RPC support */
+	pthread_t grpc_thread;
+	TEEC_GenericRpcCallback grpc_callback;
+	void *grpc_context;
 } TEEC_Session;
 
 /**
